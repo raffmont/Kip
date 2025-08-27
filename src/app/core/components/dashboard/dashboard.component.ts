@@ -41,9 +41,13 @@ import { DatasetService } from '../../services/data-set.service';
 import { WidgetWindTrendsChartComponent } from '../../../widgets/widget-windtrends-chart/widget-windtrends-chart.component';
 import { WidgetHorizonComponent } from '../../../widgets/widget-horizon/widget-horizon.component';
 
-import { SignalkRequestsService } from '../../services/signalk-requests.service';
-
 interface PressGestureDetail { x?: number; y?: number; center?: { x: number; y: number }; }
+
+import { Observable, Observer, Subscription, map } from 'rxjs';
+import { SignalkRequestsService } from '../../services/signalk-requests.service';
+import { DataService, IPathUpdate } from '../../services/data.service';
+
+
 
 @Component({
   selector: 'dashboard',
@@ -61,8 +65,19 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private readonly _uiEvent = inject(uiEventService);
   private readonly _dataset = inject(DatasetService);
   protected readonly _router = inject(Router);
+
+  /** Signal K data stream service to obtain/observe server data */
+  protected DataService = inject(DataService);
+
   private readonly _signalk = inject(SignalkRequestsService);
   private readonly _uuid = UUID.create();
+
+  /** Data path */
+  protected observable: Observable<IPathUpdate>;
+
+  /** Observable Subscription */
+  private dataSubscription: Subscription = undefined;
+
   protected readonly isDashboardStatic = toSignal(this.dashboard.isDashboardStatic$);
   private readonly _gridstack = viewChild.required<GridstackComponent>('grid');
   private _previousIsStaticState = true;
@@ -76,7 +91,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   });
   private _boundHandleKeyDown = this.handleKeyDown.bind(this);
 
-  private readonly _activeDashboardPath = "plugins.kip." + JSON.parse(localStorage.getItem('connectionConfig')).loginName + ".activeDashboard";
+  private  _activeDashboardPath;
 
   constructor() {
     GridstackComponent.addComponentToSelectorType([
@@ -113,6 +128,36 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       this._boundHandleKeyDown,
       { ctrlKey: true, keys: ['arrowdown', 'arrowup'] } // Filter for arrow keys with Ctrl
     );
+
+    // Create the user dependant active dashboard path
+    this._activeDashboardPath = "plugins.kip." + JSON.parse(localStorage.getItem('connectionConfig')).loginName + ".activeDashboard";
+
+    // Unsubscribe streams
+    this.unsubscribeDataStream();
+
+    // Observe the path and handle the event
+    this.setObserveDataStreamByPathKey(this._activeDashboardPath, newValue => {
+      // Get the page id
+      const pageIdParam = Number(newValue.data.value);
+
+      // Show the page number on the console
+      console.log("Dashboard:", pageIdParam)
+
+      // Check if the index is in the range
+      if (pageIdParam < 0 || pageIdParam >= this.dashboard.dashboards.length) return
+
+      // Check if the dashboard differs from the current one
+      if (pageIdParam == this.dashboard.activeDashboard()) return
+
+      // Set the active dashboard
+      this.dashboard.setActiveDashboard(pageIdParam ?? this.dashboard.activeDashboard());
+
+      // Load the dashboard
+      this.loadDashboard(this.dashboard.activeDashboard());
+
+
+    });
+
 
     // Hook Gridstack drag lifecycle early to suppress long-press during slow drags
     try {
@@ -187,6 +232,9 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       _gridstack.grid.destroy(true); // Ensure this cleans up event listeners and DOM elements
     }
     this._uiEvent.removeHotkeyListener(this._boundHandleKeyDown);
+
+    // Unsubscribe streams
+    this.unsubscribeDataStream();
   }
 
   private handleKeyDown(key: string, event: KeyboardEvent): void {
@@ -343,5 +391,35 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   protected navigateToHelp(): void {
     this._router.navigate(['/help']);
+  }
+
+  protected unsubscribeDataStream(): void {
+    this.dataSubscription?.unsubscribe();
+    this.dataSubscription = undefined;
+    this.observable = undefined;
+  }
+
+  protected setObserveDataStreamByPathKey(pathKey: string, subscribeNextFunction: ((value: IPathUpdate) => void)): void {
+
+    this.observable = this.DataService.subscribePath(pathKey, "kip")
+
+    console.log('[Dashboard] Observed data stream: ' + pathKey);
+
+    const observer: Observer<IPathUpdate> = {
+      next: (value) => subscribeNextFunction(value),
+      error: err => console.error('[Widget] Observer got an error: ' + err),
+      complete: () => console.log('[Widget] Observer got a complete notification: ' + pathKey),
+    };
+
+    const dataPipe$ = this.observable.pipe(
+      map(x => ({
+        data: {
+          value: x.data.value,
+          timestamp: x.data.timestamp
+        },
+        state: x.state
+      })),
+    );
+    this.dataSubscription = dataPipe$.subscribe(observer);
   }
 }
