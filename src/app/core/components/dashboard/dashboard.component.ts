@@ -41,6 +41,8 @@ import { DatasetService } from '../../services/data-set.service';
 import { WidgetWindTrendsChartComponent } from '../../../widgets/widget-windtrends-chart/widget-windtrends-chart.component';
 import { WidgetHorizonComponent } from '../../../widgets/widget-horizon/widget-horizon.component';
 
+import { SignalkRequestsService } from '../../services/signalk-requests.service';
+
 interface PressGestureDetail { x?: number; y?: number; center?: { x: number; y: number }; }
 
 @Component({
@@ -59,6 +61,8 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private readonly _uiEvent = inject(uiEventService);
   private readonly _dataset = inject(DatasetService);
   protected readonly _router = inject(Router);
+  private readonly _signalk = inject(SignalkRequestsService);
+  private readonly _uuid = UUID.create();
   protected readonly isDashboardStatic = toSignal(this.dashboard.isDashboardStatic$);
   private readonly _gridstack = viewChild.required<GridstackComponent>('grid');
   private _previousIsStaticState = true;
@@ -71,6 +75,8 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     resizable: { handles: 'all' },
   });
   private _boundHandleKeyDown = this.handleKeyDown.bind(this);
+
+  private readonly _activeDashboardPath = "plugins.kip." + JSON.parse(localStorage.getItem('connectionConfig')).loginName + ".activeDashboard";
 
   constructor() {
     GridstackComponent.addComponentToSelectorType([
@@ -169,6 +175,8 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       }
       this.dashboard.setActiveDashboard(pageIdParam ?? this.dashboard.activeDashboard());
       this.loadDashboard(this.dashboard.activeDashboard());
+      const requestId = this._signalk.putRequest(this._activeDashboardPath, this.dashboard.activeDashboard(),this._uuid);
+      console.log(requestId);
     });
   }
 
