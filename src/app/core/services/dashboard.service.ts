@@ -57,7 +57,7 @@ export class DashboardService {
   private _isDashboardStatic = new BehaviorSubject<boolean>(true);
   public isDashboardStatic$ = this._isDashboardStatic.asObservable();
   public readonly isDashboardStatic = toSignal(this.isDashboardStatic$);
-  public readonly blankDashboard: Dashboard[] = [ {id: null, name: 'Dashboard 1', icon: 'dashboard', configuration: [
+  public readonly blankDashboard: Dashboard[] = [ {id: null, name: 'Dashboard 1', icon: 'dashboard-dashboard', configuration: [
     {
       "w": 12,
       "h": 12,
@@ -246,7 +246,7 @@ export class DashboardService {
    * @param name The new name for the dashboard.
    * @param icon The new icon for the dashboard (defaults to "dashboard").
    */
-  public update(itemIndex: number, name: string, icon = "dashboard"): void {
+  public update(itemIndex: number, name: string, icon: string): void {
     this.dashboards.update(dashboards => dashboards.map((dashboard, i) =>
       i === itemIndex ? { ...dashboard, name: name, icon: icon } : dashboard));
 
@@ -297,7 +297,7 @@ export class DashboardService {
 
     newDashboard.id = UUID.create();
     newDashboard.name = newName;
-    newDashboard.icon = newIcon || originalDashboard.icon || 'dashboard';
+    newDashboard.icon = newIcon || 'dashboard-dashboard';
 
     if (Array.isArray(newDashboard.configuration)) {
         newDashboard.configuration.forEach((widget: NgGridStackWidget) => {
