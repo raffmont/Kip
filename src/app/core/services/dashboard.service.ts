@@ -125,14 +125,14 @@ export class DashboardService {
           // Get the selected dashboard
           const itemIndex = Number(newValue.data.value);
 
+          // Show the page number on the console
+          console.log("[Dashboard Service] itemIndex: ", itemIndex)
+
           // Check if the selected dashboard is the current one
           if (itemIndex == this.activeDashboard()) return;
 
           // Check if the index is in the range
           if (itemIndex < 0 || itemIndex > this.dashboards().length-1) return;
-
-          // Show the page number on the console
-          console.log("[Dashboard Service] itemIndex: ", itemIndex, this.activeDashboard())
 
           // Set the active dashboard
           this.activeDashboard.set(itemIndex);
