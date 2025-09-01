@@ -1,27 +1,22 @@
 import { AppSettingsService } from './app-settings.service';
-import { effect, inject, Injectable, signal } from '@angular/core';
+import {effect, inject, Injectable, Signal, signal} from '@angular/core';
 import { Router } from '@angular/router';
 import { NgGridStackWidget } from 'gridstack/dist/angular';
 import isEqual from 'lodash-es/isEqual';
 import cloneDeep from 'lodash-es/cloneDeep';
 import { UUID } from '../utils/uuid.util';
-import {BehaviorSubject, delayWhen, retryWhen, sampleTime, tap, throwError, timeout, timer} from 'rxjs';
+import {BehaviorSubject, delayWhen, Observable, retryWhen, sampleTime, tap, throwError, timeout, timer} from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 
 /*
 Kip-Commander integration
  */
-import {Observable, Observer, Subscription, map} from 'rxjs';
+
 import { SignalkRequestsService } from './signalk-requests.service';
-import { DataService, IPathUpdate } from './data.service';
-//import { UnitsService } from './units.service';
+import {DataService, IPathUpdate} from './data.service';
+
 
 import {forEach} from "lodash-es";
-
-interface IDashboardDataStream {
-  pathName: string;
-  observable: Observable<IPathUpdate>;
-};
 
 
 interface DashboardInfo {
@@ -78,14 +73,7 @@ export class DashboardService {
   Kip-Commander
    */
 
-  /** Signal K data stream service to obtain/observe server data */
-  protected DataService = inject(DataService);
-
-  /** Array of data paths use for observable automatic setup and cleanup */
-  protected dataStream: IDashboardDataStream[] = [];
-
-  /** Single Observable Subscription object for all data paths */
-  private dataSubscriptions: Subscription = undefined;
+  private readonly _data = inject(DataService);
 
   /** Base Signal K path **/
   private basePath: string;
@@ -125,76 +113,36 @@ export class DashboardService {
     // Update dashboard metadata on Signal K server
     this.skUpdateDashboards();
 
-    // Observe the path and handle the event
-    this.observeDataStream(this.basePath + ".activeDashboard", "kip-commander.XX", newValue => {
+    // Register the "self.kip.${user}.activeDashboard" for remote dashboard selection
+    this._data.subscribePath("self." + this.basePath + ".activeDashboard", 'default').subscribe(
+        (newValue: IPathUpdate) => {
 
-      // Get the page id
-      const itemIndex = Number(newValue.data.value);
+          console.log("[Dashboard Service] data: ", newValue)
 
-      // Show the page number on the console
-      console.log("Dashboard:", itemIndex)
+          // Check if the value is valid
+          if (newValue.data.value === null) return;
 
-      if (itemIndex >= 0 && itemIndex < this.dashboards().length) {
-        this.activeDashboard.set(itemIndex);
+          // Get the selected dashboard
+          const itemIndex = Number(newValue.data.value);
 
-        // Update the active dashboard on Signal K server
-        this.skUpdateActiveDashboard();
+          // Check if the selected dashboard is the current one
+          if (itemIndex == this.activeDashboard()) return;
 
-      } else {
-        console.error(`[Dashboard Service] Invalid dashboard ID: ${itemIndex}`);
-      }
-    });
+          // Check if the index is in the range
+          if (itemIndex < 0 || itemIndex > this.dashboards().length-1) return;
+
+          // Show the page number on the console
+          console.log("[Dashboard Service] itemIndex: ", itemIndex, this.activeDashboard())
+
+          // Set the active dashboard
+          this.activeDashboard.set(itemIndex);
+
+          // Navigate to the dashboard
+          this.navigateToActive()
+        })
 
   }
   /* Kip-Commander */
-
-  protected observeDataStream(
-    path: string, source: string,
-    subscribeNextFunction: ((value: IPathUpdate) => void)): void {
-
-    console.log("[Dashboard Service] observeDataStream", path, source)
-
-    this.dataStream.push({
-      pathName: path,
-      observable: this.DataService.subscribePath(path, source)
-    });
-
-    //const observer = this.buildObserver(path, subscribeNextFunction);
-    const observer : Observer<IPathUpdate> = {
-      next: (value) => subscribeNextFunction(value),
-      error: err => console.error('[Dashboard] Observer got an error: ' + err),
-      complete: () => console.log('[Dashboard] Observer got a complete notification: ' + path),
-    };
-
-    console.log("[Dashboard Service] observeDataStream (observer): ", observer)
-
-    const pathObs = this.dataStream.find((stream: IDashboardDataStream) => {
-      return stream.pathName === path;
-    })
-
-    // check Widget paths Observable(s)
-    if (pathObs === undefined) return;
-
-    console.log("[Dashboard Service] observeDataStream (pathObs): ", pathObs)
-
-    const dataPipe$ = pathObs.observable.pipe(
-        sampleTime(0.5)
-      ).subscribe(observer);
-
-    console.log("[Dashboard Service] observeDataStream (dataPipe$): ", dataPipe$)
-
-    if (this.dataSubscriptions === undefined) {
-      this.dataSubscriptions = dataPipe$;
-    } else {
-      this.dataSubscriptions.add(dataPipe$);
-    }
-  }
-
-  protected unsubscribeDataStream(): void {
-    this.dataSubscriptions?.unsubscribe();
-    this.dataSubscriptions = undefined;
-    this.dataStream = undefined;
-  }
 
   protected skUpdateActiveDashboard() {
     this._signalk.putRequest(this.basePath + ".activeDashboard", this.activeDashboard(), this._settings.KipUUID);
@@ -418,8 +366,6 @@ export class DashboardService {
     if (itemIndex >= 0 && itemIndex < this.dashboards().length) {
       this._router.navigate(['/dashboard', itemIndex]);
 
-      // Update the active dashboard on Signal K server
-      this.skUpdateActiveDashboard();
     } else {
       console.error(`[Dashboard Service] Invalid dashboard ID: ${itemIndex}`);
     }
@@ -440,8 +386,6 @@ export class DashboardService {
     }
     this._router.navigate(['/dashboard', nextDashboard]);
 
-    // Update the active dashboard on Signal K server
-    this.skUpdateActiveDashboard();
   }
 
   /**
@@ -458,8 +402,6 @@ export class DashboardService {
     }
     this._router.navigate(['/dashboard', nextDashboard]);
 
-    // Update the active dashboard on Signal K server
-    this.skUpdateActiveDashboard();
   }
 
   /**
